@@ -34,6 +34,7 @@ async function run() {
     // HR All Collection
 
     const usersCollection = db.collection("usersCollection");
+    const assetsCollection = db.collection("assetsCollection");
 
     // Adding User to the Database Start---------------
 
@@ -48,6 +49,24 @@ async function run() {
       res.send(result);
     });
 
+    app.get("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const result = await usersCollection.findOne({ email });
+      res.send(result);
+    });
+
+    // Adding Assets to the Database Start---------------
+
+    app.post("/assets", async (req, res) => {
+      const asset = req.body;
+      const result = await assetsCollection.insertOne(asset);
+      res.send(result);
+    });
+    app.get("/assets", async (req, res) => {
+      const cursor = assetsCollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
     // Adding User to the Database End-------------------
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
