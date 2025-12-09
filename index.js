@@ -2,7 +2,7 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 const port = process.env.PORT || 5000;
-const { MongoClient, ServerApiVersion } = require("mongodb");
+const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const uri = `mongodb+srv://${process.env.MONGODB_USER}:${process.env.MONGODB_PASS}@cluster0.ty9bkxj.mongodb.net/?appName=Cluster0`;
 
@@ -30,7 +30,6 @@ async function run() {
     await client.connect();
     // HR DATABASE
     const db = client.db("HR_DataBase");
-
     // HR All Collection
 
     const usersCollection = db.collection("usersCollection");
@@ -83,13 +82,67 @@ async function run() {
       res.send(result);
     });
 
-    // assignedAssets collection  Data API
+    app.delete("/requestAsset/:id", async (req, res) => {
+      console.log("DELETE ID:", req.params.id); // debug
 
-    app.post("/assignedAssets", async (req, res) => {
-      const assignedAssets = req.body;
-      const result = await assignedAssetscollection.insertOne(assignedAssets);
+      const id = req.params.id;
+      const query = { _id: new ObjectId(id) };
+      const result = await RequstassetsCollection.deleteOne(query);
       res.send(result);
     });
+
+    // APPROVE REQUEST API-----------
+    app.post("/approveRequest/:id", async (req, res) => {
+      const requestId = req.params.id;
+      const asset = req.body;
+      console.log("asset Id ", asset);
+
+      const {
+        assetId,
+        assetType,
+        assetName,
+        hrEmail,
+        companyName,
+        employeeEmail,
+        employeeName,
+        assetImage,
+      } = req.body;
+
+      //  Request delete from requestCollection
+
+      const query = { _id: new ObjectId(requestId) };
+      await RequstassetsCollection.deleteOne(query);
+
+      //  reduce quantity from main asset collection
+      await assetsCollection.updateOne(
+        { _id: new ObjectId(assetId) },
+        { $inc: { availableQuantity: -1 } }
+      );
+
+      // Create new assignedAsset Api-----------------------
+      const assignedAsset = {
+        assetId,
+        assetName,
+        assetImage,
+        employeeEmail,
+        employeeName,
+        assetType,
+        hrEmail,
+        companyName,
+        assignmentDate: new Date(),
+        returnDate: null,
+        status: "assigned",
+      };
+
+      const result = await assignedAssetscollection.insertOne(assignedAsset);
+
+      res.send({
+        success: true,
+        message: "Asset approved & assigned successfully",
+        data: result,
+      });
+    });
+
     app.get("/assignedAssets", async (req, res) => {
       const cursor = assignedAssetscollection.find().sort({ dateAdded: -1 });
       const result = await cursor.toArray();
