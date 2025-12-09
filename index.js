@@ -35,6 +35,8 @@ async function run() {
 
     const usersCollection = db.collection("usersCollection");
     const assetsCollection = db.collection("assetsCollection");
+    const RequstassetsCollection = db.collection("RequstassetsCollection");
+    const assignedAssetscollection = db.collection("assignedAssetscollection");
 
     // Adding User to the Database Start---------------
 
@@ -63,10 +65,37 @@ async function run() {
       res.send(result);
     });
     app.get("/assets", async (req, res) => {
-      const cursor = assetsCollection.find();
+      const cursor = assetsCollection.find().sort({ dateAdded: -1 });
       const result = await cursor.toArray();
       res.send(result);
     });
+
+    // Requst Asset Data API
+
+    app.post("/requestAsset", async (req, res) => {
+      const requestAsset = req.body;
+      const result = await RequstassetsCollection.insertOne(requestAsset);
+      res.send(result);
+    });
+    app.get("/requestAsset", async (req, res) => {
+      const cursor = RequstassetsCollection.find().sort({ dateAdded: -1 });
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
+    // assignedAssets collection  Data API
+
+    app.post("/assignedAssets", async (req, res) => {
+      const assignedAssets = req.body;
+      const result = await assignedAssetscollection.insertOne(assignedAssets);
+      res.send(result);
+    });
+    app.get("/assignedAssets", async (req, res) => {
+      const cursor = assignedAssetscollection.find().sort({ dateAdded: -1 });
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+
     // Adding User to the Database End-------------------
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
