@@ -36,6 +36,10 @@ async function run() {
     const assetsCollection = db.collection("assetsCollection");
     const RequstassetsCollection = db.collection("RequstassetsCollection");
     const assignedAssetscollection = db.collection("assignedAssetscollection");
+    const employeeAffiliationsCollections = db.collection(
+      "employeeAffiliationsCollections"
+    );
+    const packagesCollection = db.collection("packagesCollection");
 
     // Adding User to the Database Start---------------
 
@@ -65,6 +69,11 @@ async function run() {
     });
     app.get("/assets", async (req, res) => {
       const cursor = assetsCollection.find().sort({ dateAdded: -1 });
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+    app.get("/packages", async (req, res) => {
+      const cursor = packagesCollection.find();
       const result = await cursor.toArray();
       res.send(result);
     });
@@ -119,6 +128,22 @@ async function run() {
         { $inc: { availableQuantity: -1 } }
       );
 
+      // Create new employee Affiliations Collections Api-----------------------
+      const user = await usersCollection.findOne({ email: hrEmail });
+
+      const employeeAffiliations = {
+        employeeEmail,
+        employeeName,
+        hrEmail,
+        companyName,
+        companyLogo: user.companyLogo,
+        affiliationDate: new Date(),
+        status: "active",
+      };
+
+      const result2 = await employeeAffiliationsCollections.insertOne(
+        employeeAffiliations
+      );
       // Create new assignedAsset Api-----------------------
       const assignedAsset = {
         assetId,
@@ -127,7 +152,7 @@ async function run() {
         employeeEmail,
         employeeName,
         assetType,
-        hrEmail,
+        processedBy: hrEmail,
         companyName,
         assignmentDate: new Date(),
         returnDate: null,
@@ -140,11 +165,12 @@ async function run() {
         success: true,
         message: "Asset approved & assigned successfully",
         data: result,
+        result2,
       });
     });
 
     app.get("/assignedAssets", async (req, res) => {
-      const cursor = assignedAssetscollection.find().sort({ dateAdded: -1 });
+      const cursor = assignedAssetscollection.find();
       const result = await cursor.toArray();
       res.send(result);
     });
