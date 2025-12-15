@@ -6,6 +6,12 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const uri = `mongodb+srv://${process.env.MONGODB_USER}:${process.env.MONGODB_PASS}@cluster0.ty9bkxj.mongodb.net/?appName=Cluster0`;
 
+const admin = require("firebase-admin");
+const serviceAccount = require("./firebase-adminsSDK.json");
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+});
+
 // Midlewire
 
 app.use(cors());
@@ -103,9 +109,6 @@ async function run() {
     // APPROVE REQUEST API-----------
     app.post("/approveRequest/:id", async (req, res) => {
       const requestId = req.params.id;
-      const asset = req.body;
-      console.log("asset Id ", asset);
-
       const {
         assetId,
         assetType,
@@ -127,23 +130,36 @@ async function run() {
         { _id: new ObjectId(assetId) },
         { $inc: { availableQuantity: -1 } }
       );
+      // check employeeAffiliations alredy have or not ?
+
+      const existingAffiliation = await employeeAffiliationsCollections.findOne(
+        { employeeEmail, hrEmail }
+      );
+
+      if (existingAffiliation) {
+        await employeeAffiliationsCollections.updateOne(
+          {
+            _id: existingAffiliation._id,
+          },
+          { $inc: { assetsCount: 1 } }
+        );
+      } else {
+        const user = await usersCollection.findOne({ email: hrEmail });
+        const employeeAffiliations = {
+          employeeEmail,
+          employeeName,
+          hrEmail,
+          companyName,
+          companyLogo: user.companyLogo,
+          assetsCount: 1,
+          affiliationDate: new Date(),
+          status: "active",
+        };
+        await employeeAffiliationsCollections.insertOne(employeeAffiliations);
+      }
 
       // Create new employee Affiliations Collections Api-----------------------
-      const user = await usersCollection.findOne({ email: hrEmail });
 
-      const employeeAffiliations = {
-        employeeEmail,
-        employeeName,
-        hrEmail,
-        companyName,
-        companyLogo: user.companyLogo,
-        affiliationDate: new Date(),
-        status: "active",
-      };
-
-      const result2 = await employeeAffiliationsCollections.insertOne(
-        employeeAffiliations
-      );
       // Create new assignedAsset Api-----------------------
       const assignedAsset = {
         assetId,
@@ -165,12 +181,16 @@ async function run() {
         success: true,
         message: "Asset approved & assigned successfully",
         data: result,
-        result2,
       });
     });
 
     app.get("/assignedAssets", async (req, res) => {
       const cursor = assignedAssetscollection.find();
+      const result = await cursor.toArray();
+      res.send(result);
+    });
+    app.get("/myEmployeeList", async (req, res) => {
+      const cursor = employeeAffiliationsCollections.find();
       const result = await cursor.toArray();
       res.send(result);
     });
