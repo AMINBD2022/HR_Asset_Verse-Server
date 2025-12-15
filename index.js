@@ -190,12 +190,16 @@ async function run() {
       res.send(result);
     });
     app.get("/myEmployeeList", async (req, res) => {
-      const cursor = employeeAffiliationsCollections.find();
+      const hrEmail = req.query.hrEmail;
+      let query = {};
+      if (hrEmail) {
+        query = { hrEmail };
+      }
+      const cursor = employeeAffiliationsCollections.find(query);
       const result = await cursor.toArray();
       res.send(result);
     });
 
-    // Adding User to the Database End-------------------
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
