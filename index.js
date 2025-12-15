@@ -106,7 +106,7 @@ async function run() {
       res.send(result);
     });
 
-    // APPROVE REQUEST API-----------
+    // -----------APPROVE REQUEST API-----------
     app.post("/approveRequest/:id", async (req, res) => {
       const requestId = req.params.id;
       const {
@@ -119,8 +119,17 @@ async function run() {
         employeeName,
         assetImage,
       } = req.body;
+      // ------------ check Package Limit --------------
+      const hrUser = await usersCollection.findOne({ email: hrEmail });
+      if (hrUser.packageLimit <= 0) {
+        return res.send({
+          success: false,
+          needUpgrade: true,
+          message: "Package limit exceeded! Please upgrade plan.",
+        });
+      }
 
-      //  Request delete from requestCollection
+      // ------------ Request delete from requestCollection---------
 
       const query = { _id: new ObjectId(requestId) };
       await RequstassetsCollection.deleteOne(query);
@@ -130,7 +139,7 @@ async function run() {
         { _id: new ObjectId(assetId) },
         { $inc: { availableQuantity: -1 } }
       );
-      // check employeeAffiliations alredy have or not ?
+      // check employeeAffiliations alredy have or not , if alredy have then update only quentity ?
 
       const existingAffiliation = await employeeAffiliationsCollections.findOne(
         { employeeEmail, hrEmail }
@@ -144,21 +153,25 @@ async function run() {
           { $inc: { assetsCount: 1 } }
         );
       } else {
-        const user = await usersCollection.findOne({ email: hrEmail });
         const employeeAffiliations = {
           employeeEmail,
           employeeName,
           hrEmail,
           companyName,
-          companyLogo: user.companyLogo,
+          companyLogo: hrUser.companyLogo,
           assetsCount: 1,
-          affiliationDate: new Date(),
+          affiliationDate: new Date().toLocaleDateString(),
           status: "active",
         };
         await employeeAffiliationsCollections.insertOne(employeeAffiliations);
       }
 
-      // Create new employee Affiliations Collections Api-----------------------
+      await usersCollection.updateOne(
+        { email: hrEmail },
+        {
+          $inc: { packageLimit: -1, currentEmployees: 1 },
+        }
+      );
 
       // Create new assignedAsset Api-----------------------
       const assignedAsset = {
@@ -170,7 +183,7 @@ async function run() {
         assetType,
         processedBy: hrEmail,
         companyName,
-        assignmentDate: new Date(),
+        assignmentDate: new Date().toLocaleDateString(),
         returnDate: null,
         status: "assigned",
       };
@@ -184,16 +197,21 @@ async function run() {
       });
     });
 
+    //---------- assignedAssets api --------------------
+
     app.get("/assignedAssets", async (req, res) => {
       const cursor = assignedAssetscollection.find();
       const result = await cursor.toArray();
       res.send(result);
     });
     app.get("/myEmployeeList", async (req, res) => {
-      const hrEmail = req.query.hrEmail;
+      const { hrEmail, companyName } = req.query;
       let query = {};
       if (hrEmail) {
-        query = { hrEmail };
+        query.hrEmail = hrEmail;
+      }
+      if (companyName) {
+        query.companyName = companyName;
       }
       const cursor = employeeAffiliationsCollections.find(query);
       const result = await cursor.toArray();
