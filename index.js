@@ -36,6 +36,7 @@ async function run() {
     await client.connect();
     // HR DATABASE
     const db = client.db("HR_DataBase");
+
     // HR All Collection
 
     const usersCollection = db.collection("usersCollection");
@@ -47,7 +48,7 @@ async function run() {
     );
     const packagesCollection = db.collection("packagesCollection");
 
-    // Adding User to the Database Start---------------
+    // ------------  Users Related APIs ---------------
 
     app.post("/users", async (req, res) => {
       const newUser = req.body;
@@ -66,25 +67,54 @@ async function run() {
       res.send(result);
     });
 
-    // Adding Assets to the Database Start---------------
+    //  -------------- Assets Related APIs ---------------
 
     app.post("/assets", async (req, res) => {
       const asset = req.body;
       const result = await assetsCollection.insertOne(asset);
       res.send(result);
     });
+
     app.get("/assets", async (req, res) => {
-      const cursor = assetsCollection.find().sort({ dateAdded: -1 });
+      const email = req.query.hrEmail;
+      const query = {};
+      if (email) {
+        query.hrEmail = email;
+      }
+      const cursor = assetsCollection.find(query).sort({ dateAdded: -1 });
       const result = await cursor.toArray();
       res.send(result);
     });
+
+    app.delete("/assets/:id", async (req, res) => {
+      const id = req.params._id;
+      const result = await assetsCollection.deleteOne(id);
+      res.send(result);
+    });
+    app.patch("/assets/:id", async (req, res) => {
+      const id = req.params.id;
+      const updateAsset = req.body;
+      const filter = { _id: new ObjectId(id) };
+      const updateDoc = {
+        $set: {
+          productName: updateAsset.productName,
+          productType: updateAsset.productType,
+          productQuantity: updateAsset.productQuantity,
+          productImage: updateAsset.productImage,
+        },
+      };
+
+      const result = await assetsCollection.updateOne(filter, updateDoc);
+      res.send(result);
+    });
+
+    // ------------------- package Related APIs ----------------------
+
     app.get("/packages", async (req, res) => {
       const cursor = packagesCollection.find();
       const result = await cursor.toArray();
       res.send(result);
     });
-
-    // Requst Asset Data API
 
     app.post("/requestAsset", async (req, res) => {
       const requestAsset = req.body;
@@ -98,15 +128,14 @@ async function run() {
     });
 
     app.delete("/requestAsset/:id", async (req, res) => {
-      console.log("DELETE ID:", req.params.id); // debug
-
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await RequstassetsCollection.deleteOne(query);
       res.send(result);
     });
 
-    // -----------APPROVE REQUEST API-----------
+    // -----------Approve Request Asset Related APIs -----------
+
     app.post("/approveRequest/:id", async (req, res) => {
       const requestId = req.params.id;
       const {
@@ -200,7 +229,12 @@ async function run() {
     //---------- assignedAssets api --------------------
 
     app.get("/assignedAssets", async (req, res) => {
-      const cursor = assignedAssetscollection.find();
+      const { employeeEmail } = req.query;
+      const query = {};
+      if (employeeEmail) {
+        query.employeeEmail = employeeEmail;
+      }
+      const cursor = assignedAssetscollection.find(query);
       const result = await cursor.toArray();
       res.send(result);
     });
