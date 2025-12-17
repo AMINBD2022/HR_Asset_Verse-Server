@@ -6,6 +6,8 @@ const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const uri = `mongodb+srv://${process.env.MONGODB_USER}:${process.env.MONGODB_PASS}@cluster0.ty9bkxj.mongodb.net/?appName=Cluster0`;
 
+const stripe = require("stripe")(process.env.STRIPE_SECRET);
+
 const admin = require("firebase-admin");
 const serviceAccount = require("./firebase-adminsSDK.json");
 admin.initializeApp({
@@ -103,8 +105,10 @@ async function run() {
     });
 
     app.delete("/assets/:id", async (req, res) => {
-      const id = req.params._id;
-      const result = await assetsCollection.deleteOne(id);
+      const id = req.params.id;
+      const result = await assetsCollection.deleteOne({
+        _id: new ObjectId(id),
+      });
       res.send(result);
     });
     app.patch("/assets/:id", async (req, res) => {
@@ -245,11 +249,17 @@ async function run() {
     //---------- assigned Assets api --------------------
 
     app.get("/assignedAssets", async (req, res) => {
-      const { employeeEmail, limit = 0, skip = 0 } = req.query;
+      const { employeeEmail, limit = 0, skip = 0, filter = "" } = req.query;
       const query = {};
       if (employeeEmail) {
         query.employeeEmail = employeeEmail;
       }
+
+      // Filtering ----------
+      if (filter === "Returnable" || filter === "Non-returnable") {
+        query.assetType = filter;
+      }
+
       const result = await assignedAssetscollection
         .find(query)
         .limit(Number(limit))
@@ -282,6 +292,53 @@ async function run() {
       });
       res.send(result);
     });
+
+    // Payments Related APIs
+
+    app.post("/create-checkout-session", async (req, res) => {
+      const paymentInfo = req.body;
+      const payment = paymentInfo.price * 100;
+      const session = await stripe.checkout.sessions.create({
+        line_items: [
+          {
+            price_data: {
+              currency: "USD",
+              unit_amount: payment,
+              product_data: {
+                name: paymentInfo.subscription,
+              },
+            },
+            quantity: 1,
+          },
+        ],
+        mode: "payment",
+        success_url: `${process.env.FRONTEND_URL}/payment-success?email=${paymentInfo.hrEmail}&subscription=${paymentInfo.subscription}&session_id={CHECKOUT_SESSION_ID}`,
+
+        cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
+      });
+      console.log(session);
+      res.send({ url: session.url });
+    });
+
+    app.patch("/update-subscription/:email", async (req, res) => {
+      const email = req.params.email;
+      const { subscription } = req.body;
+
+      const packageData = await packagesCollection.findOne({ subscription });
+
+      await usersCollection.updateOne(
+        { email },
+        {
+          $set: {
+            subscription,
+            packageLimit: packageData.employeeLimit,
+          },
+        }
+      );
+
+      res.send({ success: true });
+    });
+
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
