@@ -66,6 +66,22 @@ async function run() {
       const result = await usersCollection.findOne({ email });
       res.send(result);
     });
+    app.patch("/users/:email", async (req, res) => {
+      const email = req.params.email;
+      const updateDoc = {
+        $set: {
+          name: req.body.name,
+          photoURL: req.body.photoURL,
+          phoneNumber: req.body.phoneNumber,
+          updatedAt: new Date().toLocaleString(),
+        },
+      };
+      const result = await usersCollection.updateOne(
+        { email: email },
+        updateDoc
+      );
+      res.send(result);
+    });
 
     //  -------------- Assets Related APIs ---------------
 
@@ -212,7 +228,7 @@ async function run() {
         assetType,
         processedBy: hrEmail,
         companyName,
-        assignmentDate: new Date().toLocaleDateString(),
+        assignmentDate: new Date(),
         returnDate: null,
         status: "assigned",
       };
@@ -226,18 +242,23 @@ async function run() {
       });
     });
 
-    //---------- assignedAssets api --------------------
+    //---------- assigned Assets api --------------------
 
     app.get("/assignedAssets", async (req, res) => {
-      const { employeeEmail } = req.query;
+      const { employeeEmail, limit = 0, skip = 0 } = req.query;
       const query = {};
       if (employeeEmail) {
         query.employeeEmail = employeeEmail;
       }
-      const cursor = assignedAssetscollection.find(query);
-      const result = await cursor.toArray();
-      res.send(result);
+      const result = await assignedAssetscollection
+        .find(query)
+        .limit(Number(limit))
+        .skip(Number(skip))
+        .toArray();
+      const count = await assignedAssetscollection.countDocuments(query);
+      res.send({ result, total: count });
     });
+
     app.get("/myEmployeeList", async (req, res) => {
       const { hrEmail, companyName } = req.query;
       let query = {};
@@ -252,6 +273,15 @@ async function run() {
       res.send(result);
     });
 
+    app.delete("/myEmployeeList/:id", async (req, res) => {
+      const id = req.params.id;
+      const hrEmail = req.query.hrEmail;
+      const result = await employeeAffiliationsCollections.deleteOne({
+        _id: new ObjectId(id),
+        hrEmail,
+      });
+      res.send(result);
+    });
     // Send a ping to confirm a successful connection
     await client.db("admin").command({ ping: 1 });
     console.log(
