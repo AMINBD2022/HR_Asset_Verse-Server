@@ -8,11 +8,11 @@ const uri = `mongodb+srv://${process.env.MONGODB_USER}:${process.env.MONGODB_PAS
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
-const admin = require("firebase-admin");
-const serviceAccount = require("./firebase-adminsSDK.json");
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount),
-});
+// const admin = require("firebase-admin");
+// const serviceAccount = require("./firebase-adminsSDK.json");
+// admin.initializeApp({
+//   credential: admin.credential.cert(serviceAccount),
+// });
 
 // Midlewire
 
@@ -142,7 +142,12 @@ async function run() {
       res.send(result);
     });
     app.get("/requestAsset", async (req, res) => {
-      const cursor = RequstassetsCollection.find().sort({ dateAdded: -1 });
+      const { hrEmail } = req.query;
+      const query = {};
+      if (hrEmail) {
+        query.hrEmail = hrEmail;
+      }
+      const cursor = RequstassetsCollection.find(query).sort({ dateAdded: -1 });
       const result = await cursor.toArray();
       res.send(result);
     });
@@ -270,14 +275,11 @@ async function run() {
     });
 
     app.get("/myEmployeeList", async (req, res) => {
-      const { hrEmail, companyName } = req.query;
+      const { hrEmail, companyName, employeeEmail } = req.query;
       let query = {};
-      if (hrEmail) {
-        query.hrEmail = hrEmail;
-      }
-      if (companyName) {
-        query.companyName = companyName;
-      }
+      if (hrEmail) query.hrEmail = hrEmail;
+      if (companyName) query.companyName = companyName;
+      if (employeeEmail) query.employeeEmail = employeeEmail;
       const cursor = employeeAffiliationsCollections.find(query);
       const result = await cursor.toArray();
       res.send(result);
@@ -340,10 +342,10 @@ async function run() {
     });
 
     // Send a ping to confirm a successful connection
-    await client.db("admin").command({ ping: 1 });
-    console.log(
-      "Pinged your deployment. You successfully connected to MongoDB!"
-    );
+    // await client.db("admin").command({ ping: 1 });
+    // console.log(
+    //   "Pinged your deployment. You successfully connected to MongoDB!"
+    // );
   } finally {
   }
 }
