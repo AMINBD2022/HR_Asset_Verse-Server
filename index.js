@@ -2,19 +2,36 @@ const express = require("express");
 const app = express();
 const cors = require("cors");
 const port = process.env.PORT || 5000;
+const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
 require("dotenv").config();
 const uri = `mongodb+srv://${process.env.MONGODB_USER}:${process.env.MONGODB_PASS}@cluster0.ty9bkxj.mongodb.net/?appName=Cluster0`;
 
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
-// const admin = require("firebase-admin");
-// const serviceAccount = require("./firebase-adminsSDK.json");
-// admin.initializeApp({
-//   credential: admin.credential.cert(serviceAccount),
-// });
+//--------------- Middleware---------------
 
-// Midlewire
+const verifayToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    return res.status(401).send({ message: "Unauthorized access" });
+  }
+  const token = authHeader.split(" ")[1];
+  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
+    if (err) {
+      return res.status(403).send({ message: "Forbidden access" });
+    }
+    req.decoded = decoded;
+    next();
+  });
+};
+
+const verifyHr = async (req, res, next) => {
+  if (req.decoded.role !== "Hr") {
+    return res.status(403).send({ message: "HR only access" });
+  }
+  next();
+};
 
 app.use(cors());
 app.use(express.json());
@@ -29,7 +46,7 @@ const client = new MongoClient(uri, {
 });
 
 app.get("/", (req, res) => {
-  res.send("HR Server Is here");
+  res.send("HR Server Is Running");
 });
 
 async function run() {
@@ -50,16 +67,32 @@ async function run() {
     );
     const packagesCollection = db.collection("packagesCollection");
 
+    // --------------------------JWT Releted APis---------------
+
+    app.post("/jwtToken", async (req, res) => {
+      const { email } = req.body;
+      const user = await usersCollection.findOne({ email });
+      if (!user) {
+        return res.status(401).send({ message: "User not found" });
+      }
+      const token = jwt.sign(
+        {
+          email: user.email,
+          role: user.role,
+        },
+        process.env.JWT_SECRET,
+        {
+          expiresIn: "7d",
+        }
+      );
+      res.send({ token });
+    });
+
     // ------------  Users Related APIs ---------------
 
     app.post("/users", async (req, res) => {
       const newUser = req.body;
       const result = await usersCollection.insertOne(newUser);
-      res.send(result);
-    });
-    app.get("/users", async (req, res) => {
-      const cursor = usersCollection.find();
-      const result = await cursor.toArray();
       res.send(result);
     });
 
@@ -136,12 +169,12 @@ async function run() {
       res.send(result);
     });
 
-    app.post("/requestAsset", async (req, res) => {
+    app.post("/allRequests", async (req, res) => {
       const requestAsset = req.body;
       const result = await RequstassetsCollection.insertOne(requestAsset);
       res.send(result);
     });
-    app.get("/requestAsset", async (req, res) => {
+    app.get("/allRequests", verifayToken, verifyHr, async (req, res) => {
       const { hrEmail } = req.query;
       const query = {};
       if (hrEmail) {
@@ -152,7 +185,7 @@ async function run() {
       res.send(result);
     });
 
-    app.delete("/requestAsset/:id", async (req, res) => {
+    app.delete("/allRequests/:id", async (req, res) => {
       const id = req.params.id;
       const query = { _id: new ObjectId(id) };
       const result = await RequstassetsCollection.deleteOne(query);
@@ -228,6 +261,7 @@ async function run() {
       );
 
       // Create new assignedAsset Api-----------------------
+
       const assignedAsset = {
         assetId,
         assetName,
@@ -274,12 +308,19 @@ async function run() {
       res.send({ result, total: count });
     });
 
-    app.get("/myEmployeeList", async (req, res) => {
-      const { hrEmail, companyName, employeeEmail } = req.query;
+    app.get("/myEmployeeList", verifayToken, async (req, res) => {
+      const { companyName } = req.query;
+      const { role, email } = req.decoded;
       let query = {};
-      if (hrEmail) query.hrEmail = hrEmail;
+      if (role === "Hr") {
+        query.hrEmail = email;
+      }
+      if (role === "employee") {
+        query.employeeEmail = email;
+      }
+      // if (hrEmail) query.hrEmail = hrEmail;
+      // if (employeeEmail) query.employeeEmail = employeeEmail;
       if (companyName) query.companyName = companyName;
-      if (employeeEmail) query.employeeEmail = employeeEmail;
       const cursor = employeeAffiliationsCollections.find(query);
       const result = await cursor.toArray();
       res.send(result);
