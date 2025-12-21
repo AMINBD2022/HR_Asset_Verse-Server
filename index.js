@@ -25,14 +25,6 @@ const verifayToken = (req, res, next) => {
     next();
   });
 };
-
-const verifyHr = async (req, res, next) => {
-  if (req.decoded.role !== "Hr") {
-    return res.status(403).send({ message: "HR only access" });
-  }
-  next();
-};
-
 app.use(cors());
 app.use(express.json());
 
@@ -71,6 +63,9 @@ async function run() {
 
     app.post("/jwtToken", async (req, res) => {
       const { email } = req.body;
+      if (!email) {
+        return res.status(400).send({ message: "Email is not Found" });
+      }
       const user = await usersCollection.findOne({ email });
       if (!user) {
         return res.status(401).send({ message: "User not found" });
@@ -78,7 +73,6 @@ async function run() {
       const token = jwt.sign(
         {
           email: user.email,
-          role: user.role,
         },
         process.env.JWT_SECRET,
         {
@@ -174,7 +168,7 @@ async function run() {
       const result = await RequstassetsCollection.insertOne(requestAsset);
       res.send(result);
     });
-    app.get("/allRequests", verifayToken, verifyHr, async (req, res) => {
+    app.get("/allRequests", verifayToken, async (req, res) => {
       const { hrEmail } = req.query;
       const query = {};
       if (hrEmail) {
@@ -309,21 +303,20 @@ async function run() {
     });
 
     app.get("/myEmployeeList", verifayToken, async (req, res) => {
-      const { companyName } = req.query;
-      const { role, email } = req.decoded;
-      let query = {};
-      if (role === "Hr") {
-        query.hrEmail = email;
+      try {
+        const { companyName, employeeEmail, hrEmail } = req.query;
+        let query = {};
+
+        if (hrEmail) query.hrEmail = hrEmail;
+        if (employeeEmail) query.employeeEmail = employeeEmail;
+        if (companyName) query.companyName = companyName;
+        const result = await employeeAffiliationsCollections
+          .find(query)
+          .toArray();
+        res.send(result);
+      } catch (err) {
+        res.status(500).send({ message: "Server error" });
       }
-      if (role === "employee") {
-        query.employeeEmail = email;
-      }
-      // if (hrEmail) query.hrEmail = hrEmail;
-      // if (employeeEmail) query.employeeEmail = employeeEmail;
-      if (companyName) query.companyName = companyName;
-      const cursor = employeeAffiliationsCollections.find(query);
-      const result = await cursor.toArray();
-      res.send(result);
     });
 
     app.delete("/myEmployeeList/:id", async (req, res) => {
