@@ -1,34 +1,20 @@
+require("dotenv").config();
 const express = require("express");
-const app = express();
 const cors = require("cors");
-const port = process.env.PORT || 5000;
 const jwt = require("jsonwebtoken");
 const { MongoClient, ServerApiVersion, ObjectId } = require("mongodb");
-require("dotenv").config();
-const uri = `mongodb+srv://${process.env.MONGODB_USER}:${process.env.MONGODB_PASS}@cluster0.ty9bkxj.mongodb.net/?appName=Cluster0`;
-
 const stripe = require("stripe")(process.env.STRIPE_SECRET);
 
-//--------------- Middleware---------------
+const app = express();
+const port = process.env.PORT || 5000;
 
-const verifayToken = (req, res, next) => {
-  const authHeader = req.headers.authorization;
-  if (!authHeader) {
-    return res.status(401).send({ message: "Unauthorized access" });
-  }
-  const token = authHeader.split(" ")[1];
-  jwt.verify(token, process.env.JWT_SECRET, (err, decoded) => {
-    if (err) {
-      return res.status(403).send({ message: "Forbidden access" });
-    }
-    req.decoded = decoded;
-    next();
-  });
-};
+// ---------------- Middleware ----------------
 app.use(cors());
 app.use(express.json());
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
+// ---------------- MongoDB ----------------
+const uri = process.env.MONGODB_URI;
+
 const client = new MongoClient(uri, {
   serverApi: {
     version: ServerApiVersion.v1,
@@ -37,354 +23,255 @@ const client = new MongoClient(uri, {
   },
 });
 
-app.get("/", (req, res) => {
-  res.send("HR Server Is Running");
-});
+let users, assets, reqAssets, assignedAssets, affiliations, packages;
 
-async function run() {
+async function connectDB() {
   try {
-    // Connect the client to the server	(optional starting in v4.7)
     await client.connect();
-    // HR DATABASE
-    const db = client.db("HR_DataBase");
+    const db = client.db("hrData");
 
-    // HR All Collection
+    users = db.collection("users");
+    assets = db.collection("assets");
+    reqAssets = db.collection("requestAssets");
+    assignedAssets = db.collection("assignedAssets");
+    affiliations = db.collection("affiliations");
+    packages = db.collection("packages");
 
-    const usersCollection = db.collection("usersCollection");
-    const assetsCollection = db.collection("assetsCollection");
-    const RequstassetsCollection = db.collection("RequstassetsCollection");
-    const assignedAssetscollection = db.collection("assignedAssetscollection");
-    const employeeAffiliationsCollections = db.collection(
-      "employeeAffiliationsCollections"
-    );
-    const packagesCollection = db.collection("packagesCollection");
-
-    // --------------------------JWT Releted APis---------------
-
-    app.post("/jwtToken", async (req, res) => {
-      const { email } = req.body;
-      if (!email) {
-        return res.status(400).send({ message: "Email is not Found" });
-      }
-      const user = await usersCollection.findOne({ email });
-      if (!user) {
-        return res.status(401).send({ message: "User not found" });
-      }
-      const token = jwt.sign(
-        {
-          email: user.email,
-        },
-        process.env.JWT_SECRET,
-        {
-          expiresIn: "7d",
-        }
-      );
-      res.send({ token });
-    });
-
-    // ------------  Users Related APIs ---------------
-
-    app.post("/users", async (req, res) => {
-      const newUser = req.body;
-      const result = await usersCollection.insertOne(newUser);
-      res.send(result);
-    });
-
-    app.get("/users/:email", async (req, res) => {
-      const email = req.params.email;
-      const result = await usersCollection.findOne({ email });
-      res.send(result);
-    });
-    app.patch("/users/:email", async (req, res) => {
-      const email = req.params.email;
-      const updateDoc = {
-        $set: {
-          name: req.body.name,
-          photoURL: req.body.photoURL,
-          phoneNumber: req.body.phoneNumber,
-          updatedAt: new Date().toLocaleString(),
-        },
-      };
-      const result = await usersCollection.updateOne(
-        { email: email },
-        updateDoc
-      );
-      res.send(result);
-    });
-
-    //  -------------- Assets Related APIs ---------------
-
-    app.post("/assets", async (req, res) => {
-      const asset = req.body;
-      const result = await assetsCollection.insertOne(asset);
-      res.send(result);
-    });
-
-    app.get("/assets", async (req, res) => {
-      const email = req.query.hrEmail;
-      const query = {};
-      if (email) {
-        query.hrEmail = email;
-      }
-      const cursor = assetsCollection.find(query).sort({ dateAdded: -1 });
-      const result = await cursor.toArray();
-      res.send(result);
-    });
-
-    app.delete("/assets/:id", async (req, res) => {
-      const id = req.params.id;
-      const result = await assetsCollection.deleteOne({
-        _id: new ObjectId(id),
-      });
-      res.send(result);
-    });
-    app.patch("/assets/:id", async (req, res) => {
-      const id = req.params.id;
-      const updateAsset = req.body;
-      const filter = { _id: new ObjectId(id) };
-      const updateDoc = {
-        $set: {
-          productName: updateAsset.productName,
-          productType: updateAsset.productType,
-          productQuantity: updateAsset.productQuantity,
-          productImage: updateAsset.productImage,
-        },
-      };
-
-      const result = await assetsCollection.updateOne(filter, updateDoc);
-      res.send(result);
-    });
-
-    // ------------------- package Related APIs ----------------------
-
-    app.get("/packages", async (req, res) => {
-      const cursor = packagesCollection.find();
-      const result = await cursor.toArray();
-      res.send(result);
-    });
-
-    app.post("/allRequests", async (req, res) => {
-      const requestAsset = req.body;
-      const result = await RequstassetsCollection.insertOne(requestAsset);
-      res.send(result);
-    });
-    app.get("/allRequests", verifayToken, async (req, res) => {
-      const { hrEmail } = req.query;
-      const query = {};
-      if (hrEmail) {
-        query.hrEmail = hrEmail;
-      }
-      const cursor = RequstassetsCollection.find(query).sort({ dateAdded: -1 });
-      const result = await cursor.toArray();
-      res.send(result);
-    });
-
-    app.delete("/allRequests/:id", async (req, res) => {
-      const id = req.params.id;
-      const query = { _id: new ObjectId(id) };
-      const result = await RequstassetsCollection.deleteOne(query);
-      res.send(result);
-    });
-
-    // -----------Approve Request Asset Related APIs -----------
-
-    app.post("/approveRequest/:id", async (req, res) => {
-      const requestId = req.params.id;
-      const {
-        assetId,
-        assetType,
-        assetName,
-        hrEmail,
-        companyName,
-        employeeEmail,
-        employeeName,
-        assetImage,
-      } = req.body;
-      // ------------ check Package Limit --------------
-      const hrUser = await usersCollection.findOne({ email: hrEmail });
-      if (hrUser.packageLimit <= 0) {
-        return res.send({
-          success: false,
-          needUpgrade: true,
-          message: "Package limit exceeded! Please upgrade plan.",
-        });
-      }
-
-      // ------------ Request delete from requestCollection---------
-
-      const query = { _id: new ObjectId(requestId) };
-      await RequstassetsCollection.deleteOne(query);
-
-      //  reduce quantity from main asset collection
-      await assetsCollection.updateOne(
-        { _id: new ObjectId(assetId) },
-        { $inc: { availableQuantity: -1 } }
-      );
-      // check employeeAffiliations alredy have or not , if alredy have then update only quentity ?
-
-      const existingAffiliation = await employeeAffiliationsCollections.findOne(
-        { employeeEmail, hrEmail }
-      );
-
-      if (existingAffiliation) {
-        await employeeAffiliationsCollections.updateOne(
-          {
-            _id: existingAffiliation._id,
-          },
-          { $inc: { assetsCount: 1 } }
-        );
-      } else {
-        const employeeAffiliations = {
-          employeeEmail,
-          employeeName,
-          hrEmail,
-          companyName,
-          companyLogo: hrUser.companyLogo,
-          assetsCount: 1,
-          affiliationDate: new Date().toLocaleDateString(),
-          status: "active",
-        };
-        await employeeAffiliationsCollections.insertOne(employeeAffiliations);
-      }
-
-      await usersCollection.updateOne(
-        { email: hrEmail },
-        {
-          $inc: { packageLimit: -1, currentEmployees: 1 },
-        }
-      );
-
-      // Create new assignedAsset Api-----------------------
-
-      const assignedAsset = {
-        assetId,
-        assetName,
-        assetImage,
-        employeeEmail,
-        employeeName,
-        assetType,
-        processedBy: hrEmail,
-        companyName,
-        assignmentDate: new Date(),
-        returnDate: null,
-        status: "assigned",
-      };
-
-      const result = await assignedAssetscollection.insertOne(assignedAsset);
-
-      res.send({
-        success: true,
-        message: "Asset approved & assigned successfully",
-        data: result,
-      });
-    });
-
-    //---------- assigned Assets api --------------------
-
-    app.get("/assignedAssets", async (req, res) => {
-      const { employeeEmail, limit = 0, skip = 0, filter = "" } = req.query;
-      const query = {};
-      if (employeeEmail) {
-        query.employeeEmail = employeeEmail;
-      }
-
-      // Filtering ----------
-      if (filter === "Returnable" || filter === "Non-returnable") {
-        query.assetType = filter;
-      }
-
-      const result = await assignedAssetscollection
-        .find(query)
-        .limit(Number(limit))
-        .skip(Number(skip))
-        .toArray();
-      const count = await assignedAssetscollection.countDocuments(query);
-      res.send({ result, total: count });
-    });
-
-    app.get("/myEmployeeList", verifayToken, async (req, res) => {
-      try {
-        const { companyName, employeeEmail, hrEmail } = req.query;
-        let query = {};
-
-        if (hrEmail) query.hrEmail = hrEmail;
-        if (employeeEmail) query.employeeEmail = employeeEmail;
-        if (companyName) query.companyName = companyName;
-        const result = await employeeAffiliationsCollections
-          .find(query)
-          .toArray();
-        res.send(result);
-      } catch (err) {
-        res.status(500).send({ message: "Server error" });
-      }
-    });
-
-    app.delete("/myEmployeeList/:id", async (req, res) => {
-      const id = req.params.id;
-      const hrEmail = req.query.hrEmail;
-      const result = await employeeAffiliationsCollections.deleteOne({
-        _id: new ObjectId(id),
-        hrEmail,
-      });
-      res.send(result);
-    });
-
-    // Payments Related APIs
-
-    app.post("/create-checkout-session", async (req, res) => {
-      const paymentInfo = req.body;
-      const payment = paymentInfo.price * 100;
-      const session = await stripe.checkout.sessions.create({
-        line_items: [
-          {
-            price_data: {
-              currency: "USD",
-              unit_amount: payment,
-              product_data: {
-                name: paymentInfo.subscription,
-              },
-            },
-            quantity: 1,
-          },
-        ],
-        mode: "payment",
-        success_url: `${process.env.FRONTEND_URL}/payment-success?email=${paymentInfo.hrEmail}&subscription=${paymentInfo.subscription}&session_id={CHECKOUT_SESSION_ID}`,
-
-        cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
-      });
-      console.log(session);
-      res.send({ url: session.url });
-    });
-
-    app.patch("/update-subscription/:email", async (req, res) => {
-      const email = req.params.email;
-      const { subscription } = req.body;
-
-      const packageData = await packagesCollection.findOne({ subscription });
-
-      await usersCollection.updateOne(
-        { email },
-        {
-          $set: {
-            subscription,
-            packageLimit: packageData.employeeLimit,
-          },
-        }
-      );
-
-      res.send({ success: true });
-    });
-
-    // Send a ping to confirm a successful connection
-    // await client.db("admin").command({ ping: 1 });
-    // console.log(
-    //   "Pinged your deployment. You successfully connected to MongoDB!"
-    // );
-  } finally {
+    console.log("✅ MongoDB Connected");
+  } catch (error) {
+    console.error("❌ MongoDB connection failed", error);
   }
 }
-run().catch(console.dir);
+connectDB();
 
-app.listen(port, () => {
-  console.log(`HR server is running in the port ${port}`);
+// ---------------- Root ----------------
+app.get("/", (req, res) => {
+  res.send("HR Server is Running.....");
 });
+
+// ================= USERS =================
+app.post("/users", async (req, res) => {
+  try {
+    const result = await users.insertOne(req.body);
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
+app.get("/users/:email", async (req, res) => {
+  try {
+    const result = await users.findOne({ email: req.params.email });
+    res.send(result);
+  } catch (err) {
+    res.status(500).send({ message: "Server error" });
+  }
+});
+
+app.patch("/users/:email", async (req, res) => {
+  const updateDoc = {
+    $set: { ...req.body, updatedAt: new Date() },
+  };
+  const result = await users.updateOne({ email: req.params.email }, updateDoc);
+  res.send(result);
+});
+
+// ================= ASSETS =================
+app.post("/assets", async (req, res) => {
+  const asset = { ...req.body, dateAdded: new Date() };
+  const result = await assets.insertOne(asset);
+  res.send(result);
+});
+
+app.get("/assets", async (req, res) => {
+  const query = {};
+  if (req.query.hrEmail) query.hrEmail = req.query.hrEmail;
+  const result = await assets.find(query).sort({ dateAdded: -1 }).toArray();
+  res.send(result);
+});
+
+app.patch("/assets/:id", async (req, res) => {
+  const result = await assets.updateOne(
+    { _id: new ObjectId(req.params.id) },
+    { $set: req.body }
+  );
+  res.send(result);
+});
+
+app.delete("/assets/:id", async (req, res) => {
+  const result = await assets.deleteOne({
+    _id: new ObjectId(req.params.id),
+  });
+  res.send(result);
+});
+
+// ================= REQUEST ASSETS =================
+app.post("/asset-requests", async (req, res) => {
+  const result = await reqAssets.insertOne(req.body);
+  res.send(result);
+});
+
+app.get("/asset-requests", async (req, res) => {
+  const query = {};
+  if (req.query.hrEmail) query.hrEmail = req.query.hrEmail;
+  const result = await reqAssets.find(query).toArray();
+  res.send(result);
+});
+
+app.delete("/asset-requests/:id", async (req, res) => {
+  const result = await reqAssets.deleteOne({
+    _id: new ObjectId(req.params.id),
+  });
+  res.send(result);
+});
+
+// ================= APPROVE REQUEST =================
+app.post("/approve-request/:id", async (req, res) => {
+  const data = req.body;
+
+  const hrUser = await users.findOne({ email: data.hrEmail });
+  if (!hrUser || hrUser.packageLimit <= 0) {
+    return res.send({
+      success: false,
+      needUpgrade: true,
+      message: "Package limit exceeded!",
+    });
+  }
+
+  await reqAssets.deleteOne({ _id: new ObjectId(req.params.id) });
+
+  await assets.updateOne(
+    { _id: new ObjectId(data.assetId) },
+    { $inc: { availableQuantity: -1 } }
+  );
+
+  const exist = await affiliations.findOne({
+    employeeEmail: data.employeeEmail,
+    hrEmail: data.hrEmail,
+  });
+
+  if (exist) {
+    await affiliations.updateOne(
+      { _id: exist._id },
+      { $inc: { assetsCount: 1 } }
+    );
+  } else {
+    await affiliations.insertOne({
+      employeeEmail: data.employeeEmail,
+      employeeName: data.employeeName,
+      hrEmail: data.hrEmail,
+      companyName: data.companyName,
+      employeePhoto: data.employeePhoto,
+      companyLogo: hrUser.companyLogo,
+      assetsCount: 1,
+      affiliationDate: new Date(),
+    });
+  }
+
+  await users.updateOne(
+    { email: data.hrEmail },
+    { $inc: { packageLimit: -1, currentEmployees: 1 } }
+  );
+
+  const result = await assignedAssets.insertOne({
+    ...data,
+    assignmentDate: new Date(),
+    status: "assigned",
+  });
+
+  res.send({ success: true, data: result });
+});
+
+// ================= ASSIGNED ASSETS =================
+app.get("/assignedAssets", async (req, res) => {
+  const query = {};
+  if (req.query.employeeEmail) query.employeeEmail = req.query.employeeEmail;
+  if (
+    req.query.filter === "Returnable" ||
+    req.query.filter === "Non-returnable"
+  ) {
+    query.assetType = req.query.filter;
+  }
+
+  const result = await assignedAssets
+    .find(query)
+    .limit(Number(req.query.limit || 0))
+    .skip(Number(req.query.skip || 0))
+    .toArray();
+
+  const total = await assignedAssets.countDocuments(query);
+  res.send({ result, total });
+});
+
+// ================= EMPLOYEES =================
+app.get("/employees", async (req, res) => {
+  const query = {};
+  if (req.query.hrEmail) query.hrEmail = req.query.hrEmail;
+  if (req.query.employeeEmail) query.employeeEmail = req.query.employeeEmail;
+  if (req.query.companyName) query.companyName = req.query.companyName;
+
+  const result = await affiliations.find(query).toArray();
+  res.send(result);
+});
+
+app.delete("/employees/:id", async (req, res) => {
+  const result = await affiliations.deleteOne({
+    _id: new ObjectId(req.params.id),
+    hrEmail: req.query.hrEmail,
+  });
+  res.send(result);
+});
+
+// ================= PACKAGES =================
+app.get("/packages", async (req, res) => {
+  const result = await packages.find().toArray();
+  res.send(result);
+});
+
+// ================= PAYMENTS =================
+app.post("/create-checkout-session", async (req, res) => {
+  const { price, subscription, hrEmail } = req.body;
+
+  const session = await stripe.checkout.sessions.create({
+    line_items: [
+      {
+        price_data: {
+          currency: "USD",
+          unit_amount: price * 100,
+          product_data: { name: subscription },
+        },
+        quantity: 1,
+      },
+    ],
+    mode: "payment",
+    success_url: `${process.env.FRONTEND_URL}/payment-success?email=${hrEmail}&subscription=${subscription}`,
+    cancel_url: `${process.env.FRONTEND_URL}/payment-cancel`,
+  });
+
+  res.send({ url: session.url });
+});
+
+app.patch("/update-subscription/:email", async (req, res) => {
+  const pack = await packages.findOne({
+    subscription: req.body.subscription,
+  });
+
+  await users.updateOne(
+    { email: req.params.email },
+    {
+      $set: {
+        subscription: req.body.subscription,
+        packageLimit: pack.employeeLimit,
+      },
+    }
+  );
+
+  res.send({ success: true });
+});
+
+// ---------------- START ----------------
+app.listen(port, () => {
+  console.log(`🚀 Server running on port ${port}`);
+});
+
+module.exports = app;
